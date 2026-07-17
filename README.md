@@ -112,6 +112,11 @@ created for you.
 - `requirements.txt` — Python dependencies.
 - `install.sh` / `install.bat` — one-time setup (virtual environment + deps).
 - `run.sh` / `run.bat` — launches the app.
+- `version.py` — current app version, shown in the TUI's header.
+
+## Changelog
+
+Released versions and their changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ## Data sources
 

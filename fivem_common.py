@@ -11,12 +11,14 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from version import __version__
+
 JG_PAGE_URL = "https://artifacts.jgscripts.com"
 JG_DB_URL = "https://raw.githubusercontent.com/jgscripts/fivem-artifacts-db/main/db.json"
 WINDOWS_LISTING_URL = "https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/"
 LINUX_LISTING_URL = "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/"
 
-USER_AGENT = "fivem-artifact-downloader/1.0"
+USER_AGENT = f"fivem-artifact-downloader/{__version__}"
 
 
 class FivemError(Exception):

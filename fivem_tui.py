@@ -25,6 +25,7 @@ from textual.widgets import (
 )
 
 import fivem_common as fc
+from version import __version__
 
 
 def _no_focus(widget):
@@ -605,6 +606,7 @@ class FilePanel(Vertical):
 
 class FivemApp(App):
     TITLE = "FiveM Artifact Downloader"
+    SUB_TITLE = f"v{__version__}"
 
     CSS = """
     Screen {
