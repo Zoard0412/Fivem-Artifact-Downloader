@@ -5,9 +5,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .claude/
-.build/
-build.sh
-build.bat
+build/
 .download/
 alpine/
 server/

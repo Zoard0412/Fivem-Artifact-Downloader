@@ -118,6 +118,28 @@ manually: if the folder is (or contains) `server` (Windows) or `alpine`
 (Linux), its contents are replaced; otherwise the appropriate folder is
 created for you.
 
+## Building standalone executables
+
+`build.sh` (macOS/Linux) and `build.bat` (Windows) package the app into a
+single standalone executable using [PyInstaller](https://pyinstaller.org/),
+so it can be run without a Python install. Run `./install.sh` (or
+`install.bat`) first, then:
+
+```bash
+./build.sh      # macOS / Linux
+build.bat       # Windows
+```
+
+The result is placed in `build/<os>-<arch>-v<version>/` (e.g.
+`build/macos-arm64-v1.1.1/`), alongside a `BUILD_INFO.txt` describing exactly
+what was built.
+
+PyInstaller cannot cross-compile: each script only produces a binary for the
+OS and CPU architecture of the machine it's run on. To get every
+combination (Windows/Linux/macOS × x86_64/arm64), run the matching script on
+each target machine (or a CI matrix build) and collect the results — one
+machine cannot build all of them by itself.
+
 ## Project structure
 
 - `fivem_tui.py` — the TUI application (entry point).
@@ -126,6 +148,7 @@ created for you.
 - `requirements.txt` — Python dependencies.
 - `install.sh` / `install.bat` — one-time setup (virtual environment + deps).
 - `run.sh` / `run.bat` — launches the app.
+- `build.sh` / `build.bat` — builds a standalone executable (see above).
 - `version.py` — current app version, shown in the TUI's header.
 
 ## Changelog

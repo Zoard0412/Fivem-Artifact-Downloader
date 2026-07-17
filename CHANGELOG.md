@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-17
+
+### Added
+
+- `build.sh` / `build.bat` build standalone, single-file executables with
+  PyInstaller, tagged by OS, CPU architecture and app version (e.g.
+  `build/macos-arm64-v1.1.1/fivem-artifact-downloader-1.1.1`), including a
+  `BUILD_INFO.txt` with the same details. PyInstaller cannot cross-compile,
+  so each script only builds for the machine it's run on - producing every
+  OS/architecture combination requires running the script on a matching
+  machine (or a CI matrix build).
+
 ## [1.1.0] - 2026-07-17
 
 ### Added
@@ -44,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` / `install.bat` setup scripts (virtual environment + Python
   auto-install prompt) and `run.sh` / `run.bat` launch scripts.
 
-[Unreleased]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/releases/tag/v1.1.1
 [1.1.0]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/releases/tag/v1.0.0
