@@ -10,6 +10,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.coordinate import Coordinate
+from textual.markup import escape as escape_markup
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -352,6 +353,107 @@ class RunShConflictModal(ModalScreen[bool]):
             self.dismiss(False)
 
 
+class HelpModal(ModalScreen[None]):
+    """F1 help screen: full rundown of the panels, keybindings and behavior."""
+
+    DEFAULT_CSS = """
+    HelpModal {
+        align: center middle;
+    }
+    HelpModal > Vertical {
+        width: 90%;
+        max-width: 100;
+        height: 85%;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    HelpModal .title {
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    HelpModal .section {
+        text-style: bold underline;
+        margin-top: 1;
+    }
+    HelpModal VerticalScroll {
+        height: 1fr;
+    }
+    HelpModal Horizontal {
+        height: auto;
+        align: center middle;
+        margin-top: 1;
+    }
+    """
+
+    KEYBINDINGS_TEXT = (
+        "  F1              Show this help screen\n"
+        "  F2              Switch between Windows / Linux builds\n"
+        "  F3              Download a specific build number\n"
+        "  F4              Check a build's known issues without downloading it\n"
+        "  F7              Create a new folder in the right-hand panel\n"
+        "  F8              Delete the selected file/folder in the right-hand panel\n"
+        "  F10 / q         Quit\n"
+        "  Tab / Shift+Tab Switch focus between the artifact list and the file panel\n"
+        "  Arrow keys      Move the selection within the focused panel\n"
+        "  Enter           Download the selected build / open the selected folder\n"
+        "  Escape          Close the current popup"
+    )
+
+    LEFT_PANEL_TEXT = (
+        "Lists every available build for the selected platform (version + "
+        "release date). Builds with known issues are flagged with a red '!' - "
+        "select one and press F4 (or check before downloading) to see the "
+        "details. The Windows/Linux buttons (or F2) switch platform, "
+        "'Specific version...' (or F3) lets you type a build number directly, "
+        "and 'Recommended'/'Optional' download the build FiveM's own "
+        "runtime.fivem.net page currently designates as such."
+    )
+
+    RIGHT_PANEL_TEXT = (
+        "A file manager for choosing the destination folder - whatever folder "
+        "is open here is where a download gets installed. Double click (or "
+        "Enter) opens a folder; 'New folder...' (or F7) creates one; "
+        "'Delete' (or F8) deletes the highlighted file/folder after "
+        "confirming - this can't be undone, and doesn't work on the '../' "
+        "entry. If the current folder is (or directly contains) a 'server' "
+        "or 'alpine' install, its detected FXServer artifact build number "
+        "and bundled txAdmin version (highlighted in yellow) are shown at "
+        "the bottom of the panel's border."
+    )
+
+    DOWNLOADING_TEXT = (
+        "Downloading (via double click, Enter, or the Recommended/Optional "
+        "buttons) removes any previous installation in the destination folder "
+        "('server' on Windows, 'alpine' on Linux) before installing the new "
+        "build. On Linux, if an existing run.sh differs from the new "
+        "artifact's, you're asked which one to keep instead of it being "
+        "silently overwritten."
+    )
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(f"FiveM Artifact Downloader — Help (v{__version__})", classes="title")
+            with VerticalScroll():
+                yield Static("Keybindings", classes="section")
+                yield Static(self.KEYBINDINGS_TEXT, markup=False)
+                yield Static("Left panel - artifact list", classes="section")
+                yield Static(self.LEFT_PANEL_TEXT, markup=False)
+                yield Static("Right panel - file manager", classes="section")
+                yield Static(self.RIGHT_PANEL_TEXT, markup=False)
+                yield Static("Downloading a build", classes="section")
+                yield Static(self.DOWNLOADING_TEXT, markup=False)
+            with Horizontal():
+                yield Button("Close", id="ok", variant="primary")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+    def on_key(self, event) -> None:
+        if event.key in ("escape", "f1"):
+            self.dismiss(None)
+
+
 class ProgressModal(ModalScreen[None]):
     """Status indicator during download/extraction. Controlled by the background thread."""
 
@@ -556,10 +658,12 @@ class FilePanel(Vertical):
         super().__init__()
         self.current_path = start_path
         self._entries: list[Path] = []
+        self._has_parent_entry = False
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="buttons"):
             yield _no_focus(Button("New folder...", id="btn-new-folder"))
+            yield _no_focus(Button("Delete", id="btn-delete", variant="error"))
         yield ListView(id="file-list")
 
     def on_mount(self) -> None:
@@ -571,7 +675,8 @@ class FilePanel(Vertical):
         list_view.clear()
         self._entries = []
 
-        if self.current_path.parent != self.current_path:
+        self._has_parent_entry = self.current_path.parent != self.current_path
+        if self._has_parent_entry:
             list_view.append(NavListItem(Label("../")))
             self._entries.append(self.current_path.parent)
 
@@ -589,6 +694,29 @@ class FilePanel(Vertical):
             self._entries.append(child)
 
         list_view.index = 0
+        self.border_subtitle = self._detect_versions_label(children)
+
+    def _detect_versions_label(self, children: list[Path]) -> str:
+        """Looks for a "server"/"alpine" install (the current folder itself,
+        or a direct child) and reports its detected artifact/txAdmin
+        versions, so the panel shows what's actually installed there."""
+        candidates = [self.current_path] if self.current_path.name in ("server", "alpine") else []
+        candidates += [c for c in children if c.is_dir() and c.name in ("server", "alpine")]
+
+        parts = []
+        for folder in candidates:
+            artifact_version, txadmin_version = fc.detect_installed_versions(folder)
+            if artifact_version is None and txadmin_version is None:
+                continue
+            artifact_text = (
+                f"artifact [bold yellow]{artifact_version}[/]" if artifact_version else "artifact unknown"
+            )
+            txadmin_text = (
+                f"txAdmin [bold yellow]{escape_markup(txadmin_version)}[/]"
+                if txadmin_version else "txAdmin unknown"
+            )
+            parts.append(f"{folder.name}: {artifact_text}, {txadmin_text}")
+        return " | ".join(parts)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         index = event.list_view.index
@@ -598,6 +726,16 @@ class FilePanel(Vertical):
         if target.is_dir():
             self.current_path = target
             self.refresh_listing()
+
+    def get_selected_entry(self) -> Path | None:
+        """Returns the file/folder currently highlighted in the list, or
+        None if nothing is selected or it's the '../' navigation entry."""
+        index = self.query_one("#file-list", ListView).index
+        if index is None or index >= len(self._entries):
+            return None
+        if self._has_parent_entry and index == 0:
+            return None
+        return self._entries[index]
 
 
 # --------------------------------------------------------------------------
@@ -624,9 +762,12 @@ class FivemApp(App):
     """
 
     BINDINGS = [
+        ("f1", "show_help", "Help"),
         ("f2", "toggle_platform", "Windows/Linux"),
         ("f3", "manual_version", "Specific version"),
+        ("f4", "check_issues", "Check issues"),
         ("f7", "create_folder", "New folder"),
+        ("f8", "delete_entry", "Delete"),
         ("f10", "quit", "Quit"),
         ("q", "quit", "Quit"),
     ]
@@ -653,6 +794,11 @@ class FivemApp(App):
 
     def set_status(self, text: str) -> None:
         self.query_one("#status-bar", Static).update(text)
+
+    # -- help screen -------------------------------------------------------
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpModal())
 
     # -- data loading ----------------------------------------------------
 
@@ -697,6 +843,8 @@ class FivemApp(App):
             self.action_manual_version()
         elif event.button.id == "btn-new-folder":
             self.action_create_folder()
+        elif event.button.id == "btn-delete":
+            self.action_delete_entry()
         elif event.button.id == "btn-latest-recommended" and "recommended" in self.official_tags:
             self.request_download(self.official_tags["recommended"][0])
         elif event.button.id == "btn-latest-optional" and "optional" in self.official_tags:
@@ -735,9 +883,60 @@ class FivemApp(App):
 
         self.push_screen(FolderNameModal(), handle)
 
+    # -- deleting a file/folder in the right panel ---------------------------
+
+    def action_delete_entry(self) -> None:
+        file_panel = self.query_one(FilePanel)
+        target = file_panel.get_selected_entry()
+        if target is None:
+            return
+
+        kind = "folder" if target.is_dir() else "file"
+
+        def after_confirm(proceed: bool) -> None:
+            if not proceed:
+                return
+            try:
+                fc.delete_path(target)
+            except OSError as exc:
+                self.push_screen(MessageModal("Error", f"Could not delete:\n{exc}", error=True))
+                return
+            file_panel.refresh_listing()
+            self.set_status(f"Deleted: {target}")
+
+        self.push_screen(
+            ConfirmModal(
+                "Confirm delete",
+                f"Delete this {kind}?\n\n{target}\n\nThis cannot be undone.",
+                yes_label="Delete",
+                no_label="Cancel",
+                danger=True,
+            ),
+            after_confirm,
+        )
+
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         version = int(str(event.row_key.value))
         self.request_download(version)
+
+    # -- checking a build's issues without downloading it ---------------------
+
+    def action_check_issues(self) -> None:
+        table = self.query_one(ArtifactTable)
+        if table.row_count == 0:
+            return
+        row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+        version = int(str(row_key.value))
+        issues = fc.find_issues(version, self.broken_ranges)
+        if issues:
+            body = f"Build {version} has known issues:\n\n" + "\n".join(
+                f"- {issue}" for issue in issues
+            )
+            self.push_screen(MessageModal("Known issues", body, error=True))
+        else:
+            self.push_screen(
+                MessageModal("No known issues", f"Build {version} has no known issues.")
+            )
 
     # -- starting a download -------------------------------------------------
 

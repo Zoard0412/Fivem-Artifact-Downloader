@@ -4,3 +4,9 @@ __pycache__/
 *.pyo
 .DS_Store
 Thumbs.db
+.claude/
+.build/
+.download/
+alpine/
+server/
+run.sh.new

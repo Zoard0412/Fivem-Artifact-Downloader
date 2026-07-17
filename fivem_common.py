@@ -179,6 +179,58 @@ def resolve_artifact_dir(output: Path, platform: str):
     return artifact_dir, parent, (other_dir if other_dir.exists() else None)
 
 
+
+# The FXServer binary embeds a plain-text build stamp used for its "-V"
+# output, e.g. "master SERVER v1.0.0.32561 win32" (Windows) or
+# "master v1.0.0.32561 linux" (Linux) - this is the only place the actual
+# artifact build number appears anywhere in an already-extracted install.
+_ARTIFACT_STAMP_PATTERN = re.compile(rb"master(?: SERVER)? v1\.0\.0\.(\d+) (?:win32|linux)")
+_TXADMIN_VERSION_PATTERN = re.compile(r"^\s*version\s+'([^']+)'", re.MULTILINE)
+
+
+def detect_installed_versions(folder: Path) -> tuple[int | None, str | None]:
+    """Given a "server" (Windows) or "alpine" (Linux) install folder, tries to
+    detect the installed FXServer artifact build number and the bundled
+    txAdmin version. Returns (artifact_version, txadmin_version); either (or
+    both) may be None if the file layout doesn't match what's expected, or
+    detection otherwise fails - never raises."""
+    if folder.name == "server":
+        exe = folder / "FXServer.exe"
+        citizen = folder / "citizen"
+    elif folder.name == "alpine":
+        exe = folder / "opt" / "cfx-server" / "FXServer"
+        citizen = folder / "opt" / "cfx-server" / "citizen"
+    else:
+        return None, None
+
+    artifact_version = None
+    try:
+        m = _ARTIFACT_STAMP_PATTERN.search(exe.read_bytes())
+        if m:
+            artifact_version = int(m.group(1))
+    except OSError:
+        pass
+
+    txadmin_version = None
+    try:
+        manifest = citizen / "system_resources" / "monitor" / "fxmanifest.lua"
+        m = _TXADMIN_VERSION_PATTERN.search(manifest.read_text(encoding="utf-8", errors="replace"))
+        if m:
+            txadmin_version = m.group(1)
+    except OSError:
+        pass
+
+    return artifact_version, txadmin_version
+
+
+def delete_path(path: Path) -> None:
+    """Deletes a file, or recursively deletes a folder. Raises OSError on failure."""
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
 def remove_old(artifact_dir: Path, other_dir: Path | None, log_cb=None):
     if other_dir is not None and other_dir.exists():
         if log_cb:

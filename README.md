@@ -20,14 +20,20 @@ updating [FiveM](https://fivem.net) server artifacts on Windows and Linux.
   builds as designated by FiveM's own `runtime.fivem.net` page (the version
   number is shown right on the button, e.g. "Latest recommended (25770)").
 - Download a specific build by number, or pick one from the list.
+- Check a build's known issues without downloading it (`F4`).
 - Automatically removes the previous installation (`server/` on Windows,
   `alpine/` on Linux) before installing the new one.
 - Never silently overwrites an existing `run.sh` on Linux if its content
   differs from the new artifact's version — shows both versions side by side
   and asks which one to keep.
 - Create new folders directly from the file panel.
+- Delete files/folders directly from the file panel (`F8`), after confirming.
 - Single click always just selects; double click (or Enter) downloads a
   build / opens a folder.
+- Detects and displays the installed FXServer artifact build number and
+  bundled txAdmin version (highlighted in yellow) when the file panel's
+  current folder is (or directly contains) a `server`/`alpine` install.
+- `F1` opens an in-app help screen with the full control scheme.
 
 ## Requirements
 
@@ -89,13 +95,21 @@ run.bat
 
 | Action                         | Key / Mouse                          |
 |---------------------------------|---------------------------------------|
+| Help screen                     | `F1`                                  |
 | Switch Windows/Linux builds     | `F2` or the Windows/Linux buttons     |
 | Download a specific version     | `F3` or "Specific version..." button  |
+| Check the selected build's issues (no download) | `F4`          |
 | Download latest recommended/optional | "Latest recommended (X)" / "Latest optional (Y)" buttons |
 | Create a new folder             | `F7` or "New folder..." button        |
+| Delete the selected file/folder | `F8` or "Delete" button                |
 | Select an item                  | Single click, or arrow keys           |
 | Download build / open folder    | Double click, or `Enter`              |
+| Switch focus between panels     | `Tab` / `Shift+Tab`                   |
 | Quit                            | `F10` or `q`                          |
+
+The right-hand file panel's border also shows the detected FXServer artifact
+build number and bundled txAdmin version whenever the currently open folder
+is (or directly contains) a `server` (Windows) or `alpine` (Linux) install.
 
 Navigate to the desired destination folder in the right-hand file panel
 before downloading — whatever folder is currently open there is used as the

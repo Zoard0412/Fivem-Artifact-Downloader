@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-17
+
+### Added
+
+- The right-hand file panel now detects and displays the installed FXServer
+  artifact build number and bundled txAdmin version (highlighted in yellow)
+  whenever the current folder is (or directly contains) a `server`/`alpine`
+  install, read straight from the installed files (`FXServer(.exe)`'s build
+  stamp and the `monitor` system resource's `fxmanifest.lua`).
+- `F4` checks the selected build's known issues on demand, without having to
+  start a download first.
+- `F1` opens a help screen listing every keybinding and describing how the
+  two panels and the download flow work.
+- `F8` (or the "Delete" button) deletes the highlighted file/folder in the
+  right-hand file panel after a confirmation prompt.
+
 ## [1.0.0] - 2026-07-17
 
 ### Added
@@ -28,5 +44,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` / `install.bat` setup scripts (virtual environment + Python
   auto-install prompt) and `run.sh` / `run.bat` launch scripts.
 
-[Unreleased]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/releases/tag/v1.0.0
