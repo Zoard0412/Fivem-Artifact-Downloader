@@ -33,6 +33,12 @@ updating [FiveM](https://fivem.net) server artifacts on Windows and Linux.
 - Detects and displays the installed FXServer artifact build number and
   bundled txAdmin version (highlighted in yellow) when the file panel's
   current folder is (or directly contains) a `server`/`alpine` install.
+- txAdmin only ever moves forward: installing a build whose bundled txAdmin
+  is older than the one already present keeps the newer, already-installed
+  txAdmin automatically instead of downgrading it.
+- Update just txAdmin (`F6`, or the "Update txAdmin" button) to the latest
+  release from [citizenfx/txAdmin](https://github.com/citizenfx/txAdmin),
+  independent of the FXServer artifact version.
 - `F1` opens an in-app help screen with the full control scheme.
 
 ## Requirements
@@ -100,6 +106,7 @@ run.bat
 | Download a specific version     | `F3` or "Specific version..." button  |
 | Check the selected build's issues (no download) | `F4`          |
 | Download latest recommended/optional | "Latest recommended (X)" / "Latest optional (Y)" buttons |
+| Update txAdmin only             | `F6` or "Update txAdmin" button        |
 | Create a new folder             | `F7` or "New folder..." button        |
 | Delete the selected file/folder | `F8` or "Delete" button                |
 | Select an item                  | Single click, or arrow keys           |
@@ -161,6 +168,7 @@ Released versions and their changes are tracked in [CHANGELOG.md](CHANGELOG.md).
   and `https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/`
 - Known-broken builds: [jgscripts/fivem-artifacts-db](https://github.com/jgscripts/fivem-artifacts-db)
   (via [artifacts.jgscripts.com](https://artifacts.jgscripts.com))
+- txAdmin releases: [citizenfx/txAdmin](https://github.com/citizenfx/txAdmin) (GitHub API)
 
 ## License
 

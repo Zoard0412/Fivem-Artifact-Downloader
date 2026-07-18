@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-18
+
+### Added
+
+- txAdmin can now only ever move forward: when installing an FXServer build
+  whose bundled txAdmin is older than the one already present in the
+  destination folder (e.g. rolling back to an earlier build after a broken
+  newer one), the newer, already-installed txAdmin is kept automatically
+  instead of being downgraded, and this is noted in the "Done" popup.
+- New "Update txAdmin" action (`F6`, or the button in the file panel)
+  updates just txAdmin in the currently browsed `server`/`alpine` install to
+  the latest release from [citizenfx/txAdmin](https://github.com/citizenfx/txAdmin),
+  independent of the FXServer artifact version - shows the current and
+  latest version and asks for confirmation before installing.
+
 ## [1.1.1] - 2026-07-17
 
 ### Added
@@ -56,7 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` / `install.bat` setup scripts (virtual environment + Python
   auto-install prompt) and `run.sh` / `run.bat` launch scripts.
 
-[Unreleased]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/releases/tag/v1.2.0
 [1.1.1]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/releases/tag/v1.1.1
 [1.1.0]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Zoard0412/Fivem-Artifact-Downloader/releases/tag/v1.0.0

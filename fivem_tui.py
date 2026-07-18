@@ -391,6 +391,7 @@ class HelpModal(ModalScreen[None]):
         "  F2              Switch between Windows / Linux builds\n"
         "  F3              Download a specific build number\n"
         "  F4              Check a build's known issues without downloading it\n"
+        "  F6              Update txAdmin in the right-hand panel's install\n"
         "  F7              Create a new folder in the right-hand panel\n"
         "  F8              Delete the selected file/folder in the right-hand panel\n"
         "  F10 / q         Quit\n"
@@ -419,7 +420,9 @@ class HelpModal(ModalScreen[None]):
         "entry. If the current folder is (or directly contains) a 'server' "
         "or 'alpine' install, its detected FXServer artifact build number "
         "and bundled txAdmin version (highlighted in yellow) are shown at "
-        "the bottom of the panel's border."
+        "the bottom of the panel's border. 'Update txAdmin' (or F6) updates "
+        "just txAdmin in that install to the latest release from "
+        "github.com/citizenfx/txAdmin, without touching the FXServer artifact."
     )
 
     DOWNLOADING_TEXT = (
@@ -428,7 +431,11 @@ class HelpModal(ModalScreen[None]):
         "('server' on Windows, 'alpine' on Linux) before installing the new "
         "build. On Linux, if an existing run.sh differs from the new "
         "artifact's, you're asked which one to keep instead of it being "
-        "silently overwritten."
+        "silently overwritten. txAdmin only ever moves forward: if the build "
+        "being installed bundles an older txAdmin than the one already "
+        "present (e.g. rolling back after a broken newer build), the newer, "
+        "already-installed txAdmin is kept automatically and noted in the "
+        "'Done' popup."
     )
 
     def compose(self) -> ComposeResult:
@@ -651,6 +658,12 @@ class FilePanel(Vertical):
     FilePanel .buttons {
         height: 4;
         margin-bottom: 1;
+        overflow-x: auto;
+        scrollbar-size-horizontal: 1;
+    }
+    FilePanel .buttons Button {
+        margin-right: 1;
+        min-width: 10;
     }
     """
 
@@ -664,6 +677,7 @@ class FilePanel(Vertical):
         with Horizontal(classes="buttons"):
             yield _no_focus(Button("New folder...", id="btn-new-folder"))
             yield _no_focus(Button("Delete", id="btn-delete", variant="error"))
+            yield _no_focus(Button("Update txAdmin", id="btn-update-txadmin"))
         yield ListView(id="file-list")
 
     def on_mount(self) -> None:
@@ -737,6 +751,18 @@ class FilePanel(Vertical):
             return None
         return self._entries[index]
 
+    def find_install_dir(self) -> Path | None:
+        """Returns the "server"/"alpine" install folder to act on for
+        actions like updating txAdmin: the current folder itself if it's
+        one, otherwise a direct child of that name."""
+        if self.current_path.name in ("server", "alpine"):
+            return self.current_path
+        for name in ("server", "alpine"):
+            candidate = self.current_path / name
+            if candidate.is_dir():
+                return candidate
+        return None
+
 
 # --------------------------------------------------------------------------
 # Main application
@@ -766,6 +792,7 @@ class FivemApp(App):
         ("f2", "toggle_platform", "Windows/Linux"),
         ("f3", "manual_version", "Specific version"),
         ("f4", "check_issues", "Check issues"),
+        ("f6", "update_txadmin", "Update txAdmin"),
         ("f7", "create_folder", "New folder"),
         ("f8", "delete_entry", "Delete"),
         ("f10", "quit", "Quit"),
@@ -845,6 +872,8 @@ class FivemApp(App):
             self.action_create_folder()
         elif event.button.id == "btn-delete":
             self.action_delete_entry()
+        elif event.button.id == "btn-update-txadmin":
+            self.action_update_txadmin()
         elif event.button.id == "btn-latest-recommended" and "recommended" in self.official_tags:
             self.request_download(self.official_tags["recommended"][0])
         elif event.button.id == "btn-latest-optional" and "optional" in self.official_tags:
@@ -914,6 +943,94 @@ class FivemApp(App):
             ),
             after_confirm,
         )
+
+    # -- updating txAdmin on its own, independent of the FXServer artifact ----
+
+    def action_update_txadmin(self) -> None:
+        file_panel = self.query_one(FilePanel)
+        install_dir = file_panel.find_install_dir()
+        if install_dir is None:
+            self.push_screen(
+                MessageModal(
+                    "No install found",
+                    "No 'server' or 'alpine' FXServer install found here.",
+                    error=True,
+                )
+            )
+            return
+        self.set_status("Checking latest txAdmin release...")
+        self.check_txadmin_update(install_dir)
+
+    @work(thread=True, exclusive=True, group="txadmin-check")
+    def check_txadmin_update(self, install_dir: Path) -> None:
+        _, current_version = fc.detect_installed_versions(install_dir)
+        try:
+            latest_version, download_url = fc.get_latest_txadmin_release()
+        except fc.FivemError as exc:
+            self.call_from_thread(self.set_status, "")
+            self.call_from_thread(self.push_screen, MessageModal("Error", str(exc), error=True))
+            return
+
+        if current_version and fc.compare_versions(latest_version, current_version) <= 0:
+            self.call_from_thread(self.set_status, "")
+            self.call_from_thread(
+                self.push_screen,
+                MessageModal(
+                    "Up to date",
+                    f"The installed txAdmin ({current_version}) is already the latest "
+                    f"available release ({latest_version}) or newer.",
+                ),
+            )
+            return
+
+        def after_confirm(proceed: bool) -> None:
+            if proceed:
+                self.run_txadmin_update(install_dir, latest_version, download_url)
+
+        body = (
+            f"Update txAdmin in:\n{install_dir}\n\n"
+            f"{current_version or 'unknown'} -> {latest_version}"
+        )
+        self.call_from_thread(self.set_status, "")
+        self.call_from_thread(
+            self.push_screen,
+            ConfirmModal("Update txAdmin", body, yes_label="Update"),
+            after_confirm,
+        )
+
+    @work(thread=True, exclusive=True, group="download")
+    def run_txadmin_update(self, install_dir: Path, new_version: str, download_url: str) -> None:
+        progress_modal = ProgressModal(f"Updating txAdmin to {new_version}")
+        self.call_from_thread(self.push_screen, progress_modal)
+
+        def log(text: str) -> None:
+            self.call_from_thread(progress_modal.set_status, text)
+
+        def progress(downloaded: int, total: int) -> None:
+            self.call_from_thread(progress_modal.set_progress, downloaded, total)
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="fivem-txadmin-") as tmp:
+                archive_path = Path(tmp) / "monitor.zip"
+                fc.download_file(download_url, archive_path, progress_cb=progress)
+                log("Installing...")
+                fc.install_txadmin(install_dir, archive_path, log_cb=log)
+        except fc.FivemError as exc:
+            self.call_from_thread(self.pop_screen)
+            self.call_from_thread(self.push_screen, MessageModal("Error", str(exc), error=True))
+            return
+        except Exception as exc:  # surface unexpected errors too, don't fail silently
+            self.call_from_thread(self.pop_screen)
+            self.call_from_thread(self.push_screen, MessageModal("Unexpected error", str(exc), error=True))
+            return
+
+        self.call_from_thread(self.pop_screen)
+        self.call_from_thread(
+            self.push_screen,
+            MessageModal("Done", f"txAdmin {new_version} installed to:\n{install_dir}"),
+        )
+        self.call_from_thread(self.query_one(FilePanel).refresh_listing)
+        self.call_from_thread(self.set_status, f"Done: txAdmin {new_version} installed to: {install_dir}")
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         version = int(str(event.row_key.value))
@@ -1029,9 +1146,15 @@ class FivemApp(App):
         def progress(downloaded: int, total: int) -> None:
             self.call_from_thread(progress_modal.set_progress, downloaded, total)
 
+        kept_newer_txadmin = False
+        old_txadmin_version = None
+        txadmin_backup = None
         try:
             artifact_dir, extraction_parent, other_dir = fc.resolve_artifact_dir(dest_dir, platform)
             download_url = fc.build_download_url(build.version, build.build_hash, platform)
+
+            _, old_txadmin_version = fc.detect_installed_versions(artifact_dir)
+            txadmin_backup = fc.backup_txadmin(artifact_dir)
 
             with tempfile.TemporaryDirectory(prefix="fivem-artifact-") as tmp:
                 archive_name = "server.zip" if platform == "windows" else "fx.tar.xz"
@@ -1046,6 +1169,20 @@ class FivemApp(App):
                         archive_path, artifact_dir, extraction_parent, other_dir,
                         run_sh_resolver=self.ask_run_sh_from_thread, log_cb=log,
                     )
+
+            # txAdmin can only move forward: if this build bundles an older
+            # txAdmin than what was already installed here (e.g. rolling back
+            # to an earlier build after a broken newer one), automatically
+            # keep the newer, already-installed txAdmin instead of downgrading it.
+            if txadmin_backup is not None and old_txadmin_version:
+                _, new_txadmin_version = fc.detect_installed_versions(artifact_dir)
+                if new_txadmin_version and fc.compare_versions(new_txadmin_version, old_txadmin_version) < 0:
+                    log(
+                        f"Bundled txAdmin ({new_txadmin_version}) is older than the installed "
+                        f"one ({old_txadmin_version}) - keeping the installed version."
+                    )
+                    fc.restore_txadmin(artifact_dir, txadmin_backup)
+                    kept_newer_txadmin = True
         except fc.FivemError as exc:
             self.call_from_thread(self.pop_screen)
             self.call_from_thread(self.push_screen, MessageModal("Error", str(exc), error=True))
@@ -1054,12 +1191,18 @@ class FivemApp(App):
             self.call_from_thread(self.pop_screen)
             self.call_from_thread(self.push_screen, MessageModal("Unexpected error", str(exc), error=True))
             return
+        finally:
+            if txadmin_backup is not None:
+                fc.cleanup_txadmin_backup(txadmin_backup)
 
         self.call_from_thread(self.pop_screen)
-        self.call_from_thread(
-            self.push_screen,
-            MessageModal("Done", f"Build {build.version} installed to:\n{artifact_dir}"),
-        )
+        done_body = f"Build {build.version} installed to:\n{artifact_dir}"
+        if kept_newer_txadmin:
+            done_body += (
+                f"\n\nNote: this build bundles an older txAdmin; the previously "
+                f"installed version ({old_txadmin_version}) was kept instead."
+            )
+        self.call_from_thread(self.push_screen, MessageModal("Done", done_body))
         self.call_from_thread(self.query_one(FilePanel).refresh_listing)
         self.call_from_thread(self.set_status, f"Done: {build.version} installed to: {artifact_dir}")
 

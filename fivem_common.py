@@ -5,6 +5,7 @@ import json
 import re
 import shutil
 import tarfile
+import tempfile
 import urllib.error
 import urllib.request
 import zipfile
@@ -17,6 +18,7 @@ JG_PAGE_URL = "https://artifacts.jgscripts.com"
 JG_DB_URL = "https://raw.githubusercontent.com/jgscripts/fivem-artifacts-db/main/db.json"
 WINDOWS_LISTING_URL = "https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/"
 LINUX_LISTING_URL = "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/"
+TXADMIN_LATEST_RELEASE_API = "https://api.github.com/repos/citizenfx/txAdmin/releases/latest"
 
 USER_AGENT = f"fivem-artifact-downloader/{__version__}"
 
@@ -188,19 +190,34 @@ _ARTIFACT_STAMP_PATTERN = re.compile(rb"master(?: SERVER)? v1\.0\.0\.(\d+) (?:wi
 _TXADMIN_VERSION_PATTERN = re.compile(r"^\s*version\s+'([^']+)'", re.MULTILINE)
 
 
+def _artifact_paths(folder: Path) -> tuple[Path, Path] | tuple[None, None]:
+    """Given a "server" (Windows) or "alpine" (Linux) install folder, returns
+    (fxserver_exe, citizen_dir); (None, None) if the folder name doesn't
+    match either platform layout."""
+    if folder.name == "server":
+        return folder / "FXServer.exe", folder / "citizen"
+    if folder.name == "alpine":
+        return folder / "opt" / "cfx-server" / "FXServer", folder / "opt" / "cfx-server" / "citizen"
+    return None, None
+
+
+def _monitor_dir(folder: Path) -> Path | None:
+    """Returns the bundled txAdmin resource folder (system_resources/monitor)
+    for a "server"/"alpine" install folder, or None if not recognized."""
+    _, citizen = _artifact_paths(folder)
+    if citizen is None:
+        return None
+    return citizen / "system_resources" / "monitor"
+
+
 def detect_installed_versions(folder: Path) -> tuple[int | None, str | None]:
     """Given a "server" (Windows) or "alpine" (Linux) install folder, tries to
     detect the installed FXServer artifact build number and the bundled
     txAdmin version. Returns (artifact_version, txadmin_version); either (or
     both) may be None if the file layout doesn't match what's expected, or
     detection otherwise fails - never raises."""
-    if folder.name == "server":
-        exe = folder / "FXServer.exe"
-        citizen = folder / "citizen"
-    elif folder.name == "alpine":
-        exe = folder / "opt" / "cfx-server" / "FXServer"
-        citizen = folder / "opt" / "cfx-server" / "citizen"
-    else:
+    exe, citizen = _artifact_paths(folder)
+    if exe is None:
         return None, None
 
     artifact_version = None
@@ -221,6 +238,94 @@ def detect_installed_versions(folder: Path) -> tuple[int | None, str | None]:
         pass
 
     return artifact_version, txadmin_version
+
+
+def compare_versions(a: str, b: str) -> int:
+    """Compares two dotted version strings (e.g. "8.1.1"). Numeric segments
+    are compared numerically. Returns -1, 0 or 1. Falls back to a plain
+    string comparison if the two versions aren't structurally comparable
+    (e.g. mismatched pre-release suffixes)."""
+    def parts(v: str) -> list[int | str]:
+        return [int(p) if p.isdigit() else p for p in v.split(".")]
+
+    pa, pb = parts(a), parts(b)
+    length = max(len(pa), len(pb))
+    pa += [0] * (length - len(pa))
+    pb += [0] * (length - len(pb))
+    try:
+        if pa == pb:
+            return 0
+        return -1 if pa < pb else 1
+    except TypeError:
+        return -1 if a < b else (1 if a > b else 0)
+
+
+def backup_txadmin(artifact_dir: Path) -> Path | None:
+    """Copies the currently installed txAdmin (system_resources/monitor) to a
+    temp folder before it gets wiped by a fresh artifact extraction. Returns
+    the backup path, or None if there's nothing installed to back up. Pair
+    with cleanup_txadmin_backup() once done."""
+    monitor = _monitor_dir(artifact_dir)
+    if monitor is None or not monitor.exists():
+        return None
+    backup_path = Path(tempfile.mkdtemp(prefix="fivem-txadmin-backup-")) / "monitor"
+    shutil.copytree(monitor, backup_path)
+    return backup_path
+
+
+def restore_txadmin(artifact_dir: Path, backup: Path) -> None:
+    """Restores a previously backed-up txAdmin over whatever a fresh artifact
+    extraction just installed."""
+    monitor = _monitor_dir(artifact_dir)
+    if monitor is None:
+        return
+    if monitor.exists():
+        shutil.rmtree(monitor)
+    shutil.copytree(backup, monitor)
+
+
+def cleanup_txadmin_backup(backup: Path) -> None:
+    shutil.rmtree(backup.parent, ignore_errors=True)
+
+
+def get_latest_txadmin_release() -> tuple[str, str]:
+    """Fetches the latest stable txAdmin release from GitHub. Returns
+    (version, monitor.zip download URL)."""
+    raw = http_get(TXADMIN_LATEST_RELEASE_API)
+    data = json.loads(raw)
+    version = str(data.get("tag_name", "")).lstrip("v")
+    asset = next((a for a in data.get("assets", []) if a.get("name") == "monitor.zip"), None)
+    if not version or asset is None:
+        raise FivemError(
+            f"Could not determine the latest txAdmin release from {TXADMIN_LATEST_RELEASE_API} "
+            "(the API response may have changed)."
+        )
+    return version, asset["browser_download_url"]
+
+
+def install_txadmin(artifact_dir: Path, archive: Path, log_cb=None) -> None:
+    """Extracts a txAdmin monitor.zip release into an existing FXServer
+    install's system_resources/monitor, replacing whatever is there."""
+    monitor = _monitor_dir(artifact_dir)
+    if monitor is None:
+        raise FivemError(
+            f"'{artifact_dir}' is not a recognized FXServer install "
+            "(expected a 'server' or 'alpine' folder)."
+        )
+    if not monitor.parent.exists():
+        raise FivemError(
+            f"No system_resources folder found in '{artifact_dir}' - "
+            "is FXServer actually installed there?"
+        )
+    if monitor.exists():
+        if log_cb:
+            log_cb(f"Removing old txAdmin: {monitor}")
+        shutil.rmtree(monitor)
+    monitor.mkdir(parents=True, exist_ok=True)
+    if log_cb:
+        log_cb(f"Extracting txAdmin to: {monitor}")
+    with zipfile.ZipFile(archive) as z:
+        z.extractall(monitor)
 
 
 def delete_path(path: Path) -> None:

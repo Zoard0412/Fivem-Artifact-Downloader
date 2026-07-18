@@ -3,4 +3,4 @@
 Update this alongside CHANGELOG.md whenever a release is cut.
 """
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
